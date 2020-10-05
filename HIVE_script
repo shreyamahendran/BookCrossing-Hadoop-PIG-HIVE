@@ -1,0 +1,66 @@
+// %%%%%%%% Loading the data into hdfs %%%%%%%%
+hadoop fs -mkdir input
+hadoop fs -put /home/cloudera/Downloads/BX-Book-Ratings_Clean.txt input
+hadoop fs -put /home/cloudera/Downloads/BX-Books_full.txt input
+
+// %%%%%%%% Loading the RATINGS DATA %%%%%%%%
+CREATE TABLE IF NOT EXISTS Rate
+    > (UserID INT,ISBN STRING,Rating INT)
+    > ROW FORMAT DELIMITED
+    > FIELDS TERMINATED BY '\t'
+    > STORED AS TEXTFILE;
+LOAD DATA INPATH '/user/cloudera/book/BX-Book-Ratings_Clean.txt'
+    > OVERWRITE INTO TABLE Rate;
+DESCRIBE Rate;
+
+// %%%%%%%% Grouping the Ratings by ISBN and finding the Average Rating for each ISBN %%%%%%%%
+CREATE TABLE Average_Ratings AS
+    > SELECT ISBN, AVG(Rating) as Avg_Rating
+    > FROM Rate
+    > GROUP BY ISBN;
+    
+// %%%%%%%% Loading the BOOKS DATA %%%%%%%%
+CREATE TABLE IF NOT EXISTS BookData
+    > (ISBN STRING,BookTitle STRING,BookAuthor STRING,YearOfPublication INT,Publisher STRING)
+    > ROW FORMAT DELIMITED
+    > FIELDS TERMINATED BY '\;'
+    > STORED AS TEXTFILE;
+LOAD DATA INPATH '/user/cloudera/input/BX-Books_txt.txt'
+    > OVERWRITE INTO TABLE BookData;
+DESCRIBE BookData;
+
+// %%%%%%%% Joining BOOKS and RATINGS and viewing sample entries and Displaying top 10 avg rated books %%%%%%%%
+hive> SELECT b.BookTitle,b.BookAuthor,b.YearOfPublication,a.Avg_Rating
+    > FROM BookData b
+    > LEFT OUTER JOIN Average_Ratings a
+    > ON (a.ISBN=b.ISBN)
+    > ORDER BY a.Avg_Rating DESC
+    > LIMIT 10;
+
+// %%%%%%%% Grouping by year (Displaying the 10 years with maximum count) %%%%%%%%
+SELECT YearOfPublication, COUNT(BookTitle) as A
+    > FROM BookData GROUP BY YearOfPublication
+    > ORDER BY A DESC
+    > LIMIT 10;
+    
+// %%%%%%%% For year 2002, displaying the publishers with maximum count %%%%%%%%
+SELECT Publisher, COUNT(BookTitle) as B
+    > FROM BookData
+    > WHERE YearOfPublication=2002
+    > GROUP BY Publisher
+    > ORDER BY B DESC
+    > LIMIT 10;
+    
+// %%%%%%%% For year 2002 and publisher Harlequin, displaying top 10 authors %%%%%%%%
+SELECT BookAuthor, COUNT(BookTitle) as C
+    > FROM BookData
+    > WHERE YearOfPublication=2002 AND Publisher='Harlequin'
+    > GROUP BY BookAuthor
+    > ORDER BY C DESC
+    > LIMIT 10;
+    
+// %%%%%%%% Grouping the whole data by authors (Most popular authors in BookCrossing) %%%%%%%%
+SELECT BookAuthor,COUNT(BookTitle) AS BT
+    > FROM BookData GROUP BY BookAuthor
+    > ORDER BY BT DESC
+    > LIMIT 10;
