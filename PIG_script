@@ -1,0 +1,105 @@
+// %%%%%%%% Loading the data into hdfs %%%%%%%%
+hadoop fs -mkdir pig
+hadoop fs -put /home/cloudera/Downloads/BX-Book-Ratings_full.txt pig
+hadoop fs -put /home/cloudera/Downloads/BX-Books_full.txt pig
+
+// %%%%%%%% Checking if the data is correctly loaded in PIG %%%%%%%% 
+pig
+ls
+// OUTPUT: hdfs://quickstart.cloudera:8020/user/cloudera/pig       <dir>
+//         hdfs://quickstart.cloudera:8020/user/cloudera/publisher_year_books      <dir>
+cd pig
+ls
+// OUTPUT: hdfs://quickstart.cloudera:8020/user/cloudera/pig/BX-Book-Ratings_full.txt<r1>      23748357
+//         hdfs://quickstart.cloudera:8020/user/cloudera/pig/BX-Books_full_txt.txt<r1>      79022661
+
+// %%%%%%%% Loading the RATINGS DATA %%%%%%%%
+rating = LOAD '/user/cloudera/pig/BX-Book-Ratings_full.txt'
+>> USING PigStorage(';') AS
+>> (UserID:chararray,ISBN:chararray,Rating:int);
+DESCRIBE rating;
+// OUTPUT: rating: {UserID: chararray,ISBN: chararray,Rating: int}
+
+// %%%%%%%% Grouping the Ratings by ISBN and finding the Average Rating for each ISBN %%%%%%%%
+groupByISBN = GROUP rating BY ISBN;
+countByISBN = FOREACH groupByISBN
+>> GENERATE group AS ISBN,AVG(rating.Rating) AS Avg_Rating;
+DESCRIBE countByISBN;
+// OUTPUT: countByISBN: {ISBN: chararray,Avg_Rating: double}
+
+// %%%%%%%% Order this by Avg_Ratings and display top 10 entries %%%%%%%%
+order_rating = ORDER countByISBN BY Avg_Rating DESC;
+top_rating = LIMIT order_rating 10 ;
+DUMP top_rating;
+
+// %%%%%%%% Loading the BOOKS DATA %%%%%%%%
+grunt> books = LOAD '/user/cloudera/pig/BX-Books_full_txt.txt' USING PigStorage(';') AS
+>> (ISBN:chararray, BookTitle:chararray, BookAuthor:chararray,
+>> YearOfPublication:int, Publisher:chararray);
+DESCRIBE books;
+// OUTPUT: books: {ISBN: chararray,BookTitle: chararray,BookAuthor: chararray,YearOfPublication: int,Publisher: chararray}
+
+// %%%%%%%% Joining BOOKS and RATINGS and viewing sample entries %%%%%%%%
+rated_books = JOIN books BY ISBN LEFT OUTER, countByISBN BY ISBN;
+lim = LIMIT rated_books 10;
+DUMP lim;
+
+// %%%%%%%% Displaying top 10 avg rated books %%%%%%%%
+order_rated_books = ORDER rated_books BY Avg_Rating DESC;
+top_rated_books = LIMIT order_rated_books 10;
+DESCRIBE top_rated_books;
+// OUTPUT: top_rated_books: {books::ISBN: chararray,books::BookTitle: chararray,books::BookAuthor: chararray,books::YearOfPublication:
+            int,books::Publisher: chararray,countByISBN::ISBN: chararray,countByISBN::Avg_Rating: double}
+to_print = foreach top_rated_books generate BookTitle, BookAuthor, YearOfPublication, Avg_Rating;
+DESCRIBE to_print;
+// OUTPUT: to_print: {books::BookTitle: chararray,books::BookAuthor: chararray,books::YearOfPublication: int,countByISBN::Avg_Rating: double}
+DUMP to_print;
+
+// %%%%%%%% Grouping by year (Displaying the 10 years with maximum count) %%%%%%%%
+groupByYear = GROUP books BY YearOfPublication;
+DESCRIBE groupByYear;
+// OUTPUT: groupByYear: {group: int,books: {(ISBN: chararray,BookTitle: chararray,BookAuthor: chararray,YearOfPublication: int,Publisher: chararray)}}
+countByYear = FOREACH groupByYear GENERATE group AS YearOfPublication, COUNT($1) AS BookCount;
+DESCRIBE countByYear;
+// OUTPUT: countByYear: {YearOfPublication: int,BookCount: long}
+order_count = ORDER countByYear BY BookCount DESC;
+top_10 = LIMIT order_count 10;
+DUMP top_10;
+// OUTPUT's INTERPRETATION: Books Published in 2002 were in maximum circulation.
+
+// %%%%%%%% For year 2002, displaying the publishers with maximum count %%%%%%%%
+books_2002 = FILTER books BY YearOfPublication == 2002;
+publisher_2002 = GROUP books_2002 BY Publisher;
+countByPublisher = FOREACH publisher_2002 GENERATE group AS Publisher, COUNT($1) AS PublisherBookCount;
+DESCRIBE countByPublisher;
+// OUTPUT: countByPublisher: {Publisher: chararray,PublisherBookCount: long}
+order_count_2002 = ORDER countByPublisher BY PublisherBookCount DESC;
+top_10_2002 = LIMIT order_count_2002 10;
+DUMP top_10_2002;
+// OUTPUT's INTERPRETATION: Books published  by Harlequin in 2002 were in maximum circulation
+
+// %%%%%%%% For year 2002 and publisher Harlequin, displaying top 10 authors %%%%%%%%
+books_2002_HQ = FILTER books BY YearOfPublication == 2002 AND Publisher == 'Harlequin' ;
+HQ_2002 = GROUP books_2002_HQ BY BookAuthor ;
+countByAuthor = FOREACH HQ_2002 GENERATE group AS BookAuthor, COUNT($1) AS BookCountAuthor;
+DESCRIBE countByAuthor;
+// OUTPUT: countByAuthor: {BookAuthor: chararray,BookCountAuthor: long}
+order_Author = ORDER countByAuthor BY BookCountAuthor DESC;
+top_10_Author = LIMIT order_Author 10;
+DUMP top_10_Author;
+// OUTPUT's INTERPRETATION: Books published  by Kasey Michaels under  Harlequin in 2002 were in maximum circulation
+
+// %%%%%%%% Grouping the whole data by authors (Most popular authors in BookCrossing) %%%%%%%%
+groupByAuthor = GROUP books BY BookAuthor;
+DESCRIBE groupByAuthor;
+// OUTPUT: groupByAuthor: {group: chararray,books: {(ISBN: chararray,BookTitle:
+           chararray,BookAuthor: chararray,YearOfPublication: int,Publisher: chararray)}}
+countByAuthorAll = FOREACH groupByAuthor GENERATE group AS BookAuthor, COUNT($1) AS AuthorBookCount;
+DESCRIBE countByAuthorAll;
+// OUTPUT: countByAuthorAll: {BookAuthor: chararray,AuthorBookCount: long}
+Author_count = ORDER countByAuthorAll BY AuthorBookCount DESC;
+top_10Author_All = LIMIT Author_count 10;
+DESCRIBE top_10Author_All;
+// OUTPUT: top_10Author_All: {BookAuthor: chararray,AuthorBookCount: long}
+DUMP top_10Author_All;
+// OUTPUT's INTERPRETATION: Agatha Christie’s books were most in circulation and generally people prefer sharing books of well-known authors.
